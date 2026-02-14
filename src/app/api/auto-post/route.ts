@@ -20,7 +20,7 @@ async function handleAutoPost() {
     // 1. Generate Content with Gemini
     console.log('Initializing Gemini client...');
     // Using Gemini 2.5 Flash Lite as requested
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite-preview-09-2025' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' });
 
     const prompt = `오늘의 코스피, 나스닥, AI 트렌드, 테슬라, 삼성전자 등의 키워드를 조합해서 2030과 40대가 흥미롭게 읽을 수 있는 주식/경제 분석 칼럼을 2,000자 분량의 HTML 또는 마크다운 형식으로 작성해 줘. 
     형식은 다음과 같이 JSON으로 줘:
