@@ -25,10 +25,10 @@ export default async function Home() {
       <div className="max-w-6xl mx-auto">
         <header className="text-center mb-16">
           <h1 className="text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600 dark:from-blue-400 dark:to-purple-400 mb-4">
-            Future Insight
+            오전 8시 뉴스레터
           </h1>
           <p className="text-lg text-gray-600 dark:text-gray-300">
-            Real-time Economic & AI Trends for the Visionary Investor
+            매일 아침 8시, 당신에게 필요한 경제 뉴스를 배달합니다.
           </p>
         </header>
 
