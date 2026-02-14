@@ -51,24 +51,25 @@ async function handleAutoPost() {
       }
     ];
 
-    console.log(`Processing ${topicConfig.length} topics...`);
+    // 2. Select 3 Random Topics for "Today's Hot Keywords"
+    // Shuffle the array and slice the first 3
+    const shuffledTopics = topicConfig.sort(() => 0.5 - Math.random());
+    const selectedTopics = shuffledTopics.slice(0, 3);
 
-    // 2. Fetch Data for ALL Topics
+    console.log(`Selected 3 Hot Topics: ${selectedTopics.map(t => t.name).join(', ')}`);
+
+    // 2. Fetch Data for Selected Topics ONLY
     let combinedContext = '';
 
-    // We'll perform searches in parallel to save time, but usually sequential is safer for rate limits if they are tight. 
-    // Brave Search usually handles concurrent requests well. Let's do `Promise.all`.
-    const searchPromises = topicConfig.map(async (topic, index) => {
+    const searchPromises = selectedTopics.map(async (topic, index) => {
       // Construct a query with OR operator for keywords to get diverse results
-      // Example: "(엔비디아 OR 테슬라 OR ...) 최신 주가 및 뉴스"
-      // Ensure the query isn't too long for the API.
       const keywordsQuery = topic.keywords.join(' OR ');
       const fullQuery = `"${topic.name}" ${keywordsQuery} ${topic.querySuffix}`;
 
       console.log(`[Topic ${index + 1}] Searching: ${fullQuery.substring(0, 50)}...`);
 
       try {
-        const braveResponse = await fetch(`https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(fullQuery)}&count=4`, { // Fetch 4 results per topic (total 20)
+        const braveResponse = await fetch(`https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(fullQuery)}&count=5`, { // Increase count slightly to ensure quality
           headers: {
             'Accept': 'application/json',
             'Accept-Encoding': 'gzip',
@@ -78,55 +79,62 @@ async function handleAutoPost() {
 
         if (!braveResponse.ok) {
           console.error(`[Topic ${index + 1}] Failed: ${braveResponse.status}`);
-          return `### ${topic.name}\n(검색 데이터 수집 실패)\n`;
+          return ''; // Return empty string on failure, don't pollute context with error messages
         }
 
         const braveData = await braveResponse.json();
         const results = braveData.web?.results?.map((r: any) =>
           `- [${r.title}](${r.url}): ${r.description}`
-        ).join('\n') || '(관련 뉴스 없음)';
+        ).join('\n');
 
-        return `### ${index + 1}. ${topic.name}\n${results}\n`;
+        if (!results) return '';
+
+        return `### ${topic.name}\n${results}\n`;
 
       } catch (err) {
         console.error(`[Topic ${index + 1}] Error:`, err);
-        return `### ${topic.name}\n(에러 발생: 데이터 수집 불가)\n`;
+        return '';
       }
     });
 
     const searchResults = await Promise.all(searchPromises);
-    combinedContext = searchResults.join('\n\n');
+    combinedContext = searchResults.filter(Boolean).join('\n\n'); // Filter out empty results
 
-    console.log('All search results collected.');
+    if (!combinedContext) {
+      throw new Error('No search results found for any topic.');
+    }
+
+    console.log('Search results collected.');
 
     // 3. Generate Content with Gemini
     console.log('Initializing Gemini client...');
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' }); // Using Flash Lite for speed/cost
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' });
 
     const prompt = `
     역할: 당신은 '흑흑이'라는 친근한 별명을 가진 경제 뉴스레터 에디터입니다.
     
-    [미션]
-    아래 [주제별 실시간 데이터]를 모두 활용하여, **매일 아침 배달되는 종합 경제 뉴스레터**를 작성해주세요.
-    사용자가 요청한 5가지 핵심 주제를 **하나도 빠짐없이** 다뤄야 합니다.
+    [절대 규칙 - 어길 시 해고]
+    1. **너는 내가 전달해 준 'Brave Search 검색 결과 데이터'만을 바탕으로 글을 써야 해.**
+    2. **검색된 데이터가 있는 주제에 대해서만 2~3개의 소제목으로 나눠서 깊이 있게 분석해.**
+    3. **절대 '데이터가 없다', '찾아보지 못했다', '제공된 정보에는 없지만' 같은 무책임한 말은 쓰지 마.**
+    4. **네가 받은 데이터 안에서만 완벽한 전문가처럼 글을 완성해.**
 
     [주제별 실시간 데이터]
     ${combinedContext}
 
-    [필수 작성 가이드라인]
+    [작성 가이드라인]
     1. **톤앤매너**:
        - "친구에게 말하듯 편안하고 부드럽게" (딱딱한 뉴스체 절대 금지)
        - "~해요", "~했답니다", "~네요" 등 친근한 종결어미 사용.
        - 독자는 "**투자자 여러분**" 또는 "**구독자님**"으로 호칭.
-       - 어려운 경제 용어는 전공자가 아니어도 이해할 수 있게 쉽게 풀어써주세요.
+       - 어려운 경제 용어는 쉽게 풀어써주세요.
 
-    2. **글의 구조 (순서 준수)**:
-       - **제목**: 이모지(☕, 🚀, 📉 등)를 활용한 감성적이고 클릭하고 싶은 제목. (예: "☕ 흑흑이의 모닝 브리핑: 엔비디아부터 비트코인까지!")
+    2. **글의 구조**:
+       - **제목**: 이모지(☕, 🚀, 📉 등)를 활용한 감성적이고 클릭하고 싶은 제목.
        - **인사말**: 날씨, 계절, 요일 등을 언급하며 가볍게 시작.
-       - **본문 (5개 섹션)**: 
-         - 위 5가지 주제(글로벌 증시, 코인, 거시경제, 한국증시, 미래기술)를 **각각 별도의 소제목(h3)**으로 나누어 작성.
-         - 각 섹션마다 검색된 키워드(예: 엔비디아, 삼성전자, 트럼프, 비트코인 등)를 구체적으로 언급하며 내용을 전개하세요.
-         - 단순히 사실만 나열하지 말고, "이게 왜 우리에게 중요한지", "앞으로 어떻게 될지"에 대한 짧은 인사이트를 곁들여주세요.
+       - **본문**: 
+         - 위 데이터에서 확인된 **가장 핫한 키워드 2~3개**를 중심으로 소제목(h3)을 달고 깊이 있게 작성하세요.
+         - 각 섹션마다 구체적인 수치나 사실을 언급하며 전문성을 보여주세요.
        - **마무리**: 오늘도 화이팅! 하는 따뜻한 격려 메시지.
        - **참고 자료**: 글 맨 마지막에 **## 참고 자료** 섹션을 만들고, 본문에 인용된 모든 기사의 제목과 URL을 리스트로 정리해주세요.
 
@@ -136,8 +144,8 @@ async function handleAutoPost() {
 
     JSON 예시:
     {
-      "title": "☕ 흑흑이의 모닝 브리핑: 반도체부터 금리까지 한눈에!",
-      "content": "<h2>반가워요, 구독자님! 흑흑이입니다.</h2><p>오늘 아침 공기가 참 상쾌하네요...</p><h3>🚀 글로벌 기술주: 엔비디아 질주, 어디까지?</h3><p>엔비디아가 또 신고가를...</p>..."
+      "title": "☕ 흑흑이의 모닝 브리핑: 엔비디아 질주, 어디까지?",
+      "content": "<h2>안녕하세요, 구독자님! 흑흑이입니다.</h2><p>오늘 아침 뉴욕 증시가 뜨거웠네요...</p><h3>🚀 엔비디아, 또 사상 최고가 경신!</h3><p>엔비디아가 어제 밤사이...</p>..."
     }`;
 
     console.log('Sending prompt to Gemini...');
