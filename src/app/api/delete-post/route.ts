@@ -13,7 +13,7 @@ export async function DELETE(request: Request) {
         // In a real app, use environment variables. For this scratchpad/demo, we allow a hardcoded fallback if env is missing, 
         // but we strongly prefer the env var. 
         // The user asked for "password input", so we match against a preset value.
-        const CORRECT_PASSWORD = process.env.ADMIN_PASSWORD || 'admin1234';
+        const CORRECT_PASSWORD = process.env.ADMIN_PASSWORD || '34627265';
 
         if (password !== CORRECT_PASSWORD) {
             return NextResponse.json({ error: 'Unauthorized: Incorrect Password' }, { status: 401 });
