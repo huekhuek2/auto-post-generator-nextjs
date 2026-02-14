@@ -17,6 +17,9 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "오전 8시 뉴스레터",
   description: "매일 아침 8시, 당신에게 필요한 경제 뉴스를 배달합니다.",
+  other: {
+    "google-adsense-account": "ca-pub-5738808153705639",
+  },
 };
 
 export default function RootLayout({
