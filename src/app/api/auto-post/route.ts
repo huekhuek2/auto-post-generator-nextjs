@@ -7,7 +7,11 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 
 // Shared logic for generating posts
 async function handleAutoPost() {
-  console.log('Starting auto-post generation...');
+  const KST_OFFSET = 9 * 60 * 60 * 1000;
+  const now = new Date(Date.now() + KST_OFFSET);
+  const today = now.toISOString().split('T')[0]; // YYYY-MM-DD
+  
+  console.log(`[Auto-Post] Starting job for date: ${today}`);
 
   // Check for API Keys
   if (!process.env.GEMINI_API_KEY) {
@@ -20,8 +24,9 @@ async function handleAutoPost() {
   }
 
   try {
-    // 1. Define Topics for Naver News Search
-    const keywords = ['코스피', '미국 증시', '삼성전자', '비트코인', '경제 뉴스'];
+    // 1. Define Topics for Naver News Search (Append Date)
+    const baseKeywords = ['코스피', '미국 증시', '삼성전자', '비트코인', '경제 뉴스'];
+    const keywords = baseKeywords.map(k => `${k} ${today}`);
     console.log(`Searching Naver News for keywords: ${keywords.join(', ')}`);
 
     // 2. Fetch Data from Naver News API
@@ -31,7 +36,8 @@ async function handleAutoPost() {
       console.log(`[Keyword ${index + 1}] Searching: ${keyword}...`);
 
       try {
-        const naverResponse = await fetch(`https://openapi.naver.com/v1/search/news.json?query=${encodeURIComponent(keyword)}&display=5&sort=sim`, {
+        // Changed sort=sim to sort=date
+        const naverResponse = await fetch(`https://openapi.naver.com/v1/search/news.json?query=${encodeURIComponent(keyword)}&display=5&sort=date`, {
           headers: {
             'X-Naver-Client-Id': process.env.NAVER_CLIENT_ID || '',
             'X-Naver-Client-Secret': process.env.NAVER_CLIENT_SECRET || ''
@@ -39,7 +45,7 @@ async function handleAutoPost() {
         });
 
         if (!naverResponse.ok) {
-          console.error(`[Keyword ${index + 1}] Failed: ${naverResponse.status}`);
+          console.error(`[Keyword ${index + 1}] Failed with status: ${naverResponse.status}`);
           return '';
         }
 
@@ -48,15 +54,19 @@ async function handleAutoPost() {
           // Clean HTML tags and entities
           const cleanTitle = item.title.replace(/<[^>]*>?/gm, '').replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
           const cleanDesc = item.description.replace(/<[^>]*>?/gm, '').replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
-          return `- [${cleanTitle}](${item.link}): ${cleanDesc}`;
+          const pubDate = item.pubDate; // Add pubDate for context if needed, but not strictly required by prompt
+          return `- [${cleanTitle}](${item.link}) (${pubDate}): ${cleanDesc}`;
         }).join('\n');
 
-        if (!results) return '';
+        if (!results) {
+          console.warn(`[Keyword ${index + 1}] No results found for ${keyword}`);
+          return '';
+        }
 
         return `### ${keyword}\n${results}\n`;
 
       } catch (err) {
-        console.error(`[Keyword ${index + 1}] Error:`, err);
+        console.error(`[Keyword ${index + 1}] Error fetching Naver news:`, err);
         return '';
       }
     });
@@ -65,10 +75,10 @@ async function handleAutoPost() {
     combinedContext = searchResults.filter(Boolean).join('\n\n');
 
     if (!combinedContext) {
-      throw new Error('No search results found from Naver API.');
+      throw new Error('No search results found from Naver API for any keyword.');
     }
 
-    console.log('Naver News data collected.');
+    console.log('Naver News data collected successfully.');
 
     // 3. Generate Content with Gemini
     console.log('Initializing Gemini client...');
@@ -76,6 +86,7 @@ async function handleAutoPost() {
 
     const prompt = `
     역할: 당신은 '흑흑이'라는 친근한 별명을 가진 경제 뉴스레터 에디터입니다.
+    오늘 날짜: ${today}
     
     [절대 규칙 - 어길 시 해고]
     1. **너는 내가 전달해 준 'Naver News 검색 결과 데이터'만을 바탕으로 글을 써야 해.**
@@ -94,7 +105,7 @@ async function handleAutoPost() {
        - 어려운 경제 용어는 쉽게 풀어써주세요.
 
     2. **글의 구조**:
-       - **제목**: 이모지(☕, 🚀, 📉 등)를 활용한 감성적이고 클릭하고 싶은 제목.
+       - **제목**: 이모지(☕, 🚀, 📉 등)를 활용한 감성적이고 클릭하고 싶은 제목. (오늘 날짜 포함 권장)
        - **인사말**: 날씨(한국 기준), 계절, 요일 등을 언급하며 가볍게 시작.
        - **본문**: 
          - 위 데이터에서 확인된 **가장 핫한 키워드 2~3개**를 중심으로 소제목(h3)을 달고 작성하세요.
@@ -124,10 +135,10 @@ async function handleAutoPost() {
     try {
       generatedData = JSON.parse(cleanText);
     } catch (e) {
-      console.error('JSON Parsing Failed:', e);
+      console.error('JSON Parsing Failed. Raw text:', text);
       generatedData = {
-        title: '오늘의 경제 뉴스 종합 브리핑',
-        content: `<h2>자동 생성 중 오류가 발생했지만, 내용은 아래와 같습니다.</h2>${text}`
+        title: `흑흑이의 경제 뉴스 (${today})`,
+        content: `<h2>자동 생성 중 형식 오류가 발생했지만, 내용은 아래와 같습니다.</h2>${text}`
       };
     }
 
@@ -139,16 +150,23 @@ async function handleAutoPost() {
       throw new Error('Generated content is too short or empty.');
     }
 
+    // Check for duplicate title
+    const existingPost = await sql`SELECT id FROM posts WHERE title = ${title} LIMIT 1`;
+    if (existingPost.rows.length > 0) {
+      console.warn(`[Auto-Post] Duplicate post detected. Title: "${title}". Skipping insertion.`);
+      return NextResponse.json({ success: true, message: 'Post generation skipped (Duplicate Title)', data: generatedData }, { status: 200 });
+    }
+
     await sql`
       INSERT INTO posts (title, content)
       VALUES (${title}, ${content})
     `;
-    console.log('Post saved to DB successfully.');
+    console.log(`[Auto-Post] Post saved to DB successfully. Title: ${title}`);
 
     return NextResponse.json({ success: true, message: 'Comprehensive post generated via Naver API', data: generatedData }, { status: 200 });
 
   } catch (error: any) {
-    console.error('General API Error:', error);
+    console.error('[Auto-Post] General API Error:', error);
     return NextResponse.json({
       success: false,
       error: 'Failed to generate post',
