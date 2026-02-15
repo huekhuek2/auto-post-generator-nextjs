@@ -209,9 +209,9 @@ async function handleAutoPost() {
 }
 
 export async function POST(request: Request) {
-  return handleAutoPost();
+  return handleAutoPost(request);
 }
 
 export async function GET(request: Request) {
-  return handleAutoPost();
+  return handleAutoPost(request);
 }
