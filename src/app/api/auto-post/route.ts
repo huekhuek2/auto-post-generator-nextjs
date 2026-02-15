@@ -10,8 +10,10 @@ async function handleAutoPost() {
   const KST_OFFSET = 9 * 60 * 60 * 1000;
   const now = new Date(Date.now() + KST_OFFSET);
   const today = now.toISOString().split('T')[0]; // YYYY-MM-DD
-  
-  console.log(`[Auto-Post] Starting job for date: ${today}`);
+  const dayOfWeek = now.getDay(); // 0 (Sun) - 6 (Sat)
+  const isSaturday = dayOfWeek === 6;
+
+  console.log(`[Auto-Post] Starting job for date: ${today} (Day: ${dayOfWeek}, IsSaturday: ${isSaturday})`);
 
   // Check for API Keys
   if (!process.env.GEMINI_API_KEY) {
@@ -24,10 +26,25 @@ async function handleAutoPost() {
   }
 
   try {
-    // 1. Define Topics for Naver News Search (Append Date)
-    const baseKeywords = ['코스피', '미국 증시', '삼성전자', '비트코인', '경제 뉴스'];
-    const keywords = baseKeywords.map(k => `${k} ${today}`);
-    console.log(`Searching Naver News for keywords: ${keywords.join(', ')}`);
+    // 1. Define Topics & Sort Order based on Day
+    let keywords: string[] = [];
+    let sortOption = 'date'; // Default: Sort by query date/latest
+
+    if (isSaturday) {
+      // Saturday: Weekly Summary
+      console.log('Mode: Saturday Weekly Briefing');
+      const baseKeywords = ['이번 주 증시 요약', '한 주간 주요 경제 뉴스', '주간 증시 전망', '이번 주 비트코인 흐름'];
+      keywords = baseKeywords.map(k => `${k} ${today}`); // Append date to keep relevance
+      sortOption = 'sim'; // Sort by similarity/relevance for weekly overviews
+    } else {
+      // Weekdays + Sunday: Daily News
+      console.log('Mode: Daily News Briefing');
+      const baseKeywords = ['코스피', '미국 증시', '삼성전자', '비트코인', '경제 뉴스'];
+      keywords = baseKeywords.map(k => `${k} ${today}`);
+      sortOption = 'date'; // Sort by latest
+    }
+
+    console.log(`Searching Naver News for keywords: ${keywords.join(', ')} (Sort: ${sortOption})`);
 
     // 2. Fetch Data from Naver News API
     let combinedContext = '';
@@ -36,8 +53,7 @@ async function handleAutoPost() {
       console.log(`[Keyword ${index + 1}] Searching: ${keyword}...`);
 
       try {
-        // Changed sort=sim to sort=date
-        const naverResponse = await fetch(`https://openapi.naver.com/v1/search/news.json?query=${encodeURIComponent(keyword)}&display=5&sort=date`, {
+        const naverResponse = await fetch(`https://openapi.naver.com/v1/search/news.json?query=${encodeURIComponent(keyword)}&display=5&sort=${sortOption}`, {
           headers: {
             'X-Naver-Client-Id': process.env.NAVER_CLIENT_ID || '',
             'X-Naver-Client-Secret': process.env.NAVER_CLIENT_SECRET || ''
@@ -54,7 +70,7 @@ async function handleAutoPost() {
           // Clean HTML tags and entities
           const cleanTitle = item.title.replace(/<[^>]*>?/gm, '').replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
           const cleanDesc = item.description.replace(/<[^>]*>?/gm, '').replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
-          const pubDate = item.pubDate; // Add pubDate for context if needed, but not strictly required by prompt
+          const pubDate = item.pubDate; // Add pubDate for context
           return `- [${cleanTitle}](${item.link}) (${pubDate}): ${cleanDesc}`;
         }).join('\n');
 
@@ -84,9 +100,26 @@ async function handleAutoPost() {
     console.log('Initializing Gemini client...');
     const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' });
 
+    let systemInstruction = '';
+    if (isSaturday) {
+      systemInstruction = `
+        오늘은 **토요일 주간 결산 특집**입니다.
+        한 주간의 주요 경제 흐름을 요약하고, **다음 주 시장 전망**까지 포함해서 '주간 경제 브리핑' 형식으로 작성해 주세요.
+        독자에게 한 주를 정리하는 느낌을 주어야 합니다.
+      `;
+    } else {
+      systemInstruction = `
+        오늘은 **데일리 경제 뉴스**입니다.
+        가장 최신 소식을 바탕으로 빠르고 정확하게 전달해 주세요.
+      `;
+    }
+
     const prompt = `
     역할: 당신은 '흑흑이'라는 친근한 별명을 가진 경제 뉴스레터 에디터입니다.
     오늘 날짜: ${today}
+    
+    [모드 설정]
+    ${systemInstruction}
     
     [절대 규칙 - 어길 시 해고]
     1. **너는 내가 전달해 준 'Naver News 검색 결과 데이터'만을 바탕으로 글을 써야 해.**
