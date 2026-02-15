@@ -6,7 +6,7 @@ import { sql } from '@vercel/postgres';
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 
 // Shared logic for generating posts
-async function handleAutoPost() {
+async function handleAutoPost(request?: Request) {
   const KST_OFFSET = 9 * 60 * 60 * 1000;
   const now = new Date(Date.now() + KST_OFFSET);
   const today = now.toISOString().split('T')[0]; // YYYY-MM-DD
