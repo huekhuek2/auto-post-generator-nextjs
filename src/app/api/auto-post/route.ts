@@ -98,7 +98,10 @@ async function handleAutoPost(request?: Request) {
 
     // 3. Generate Content with Gemini
     console.log('Initializing Gemini client...');
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' });
+    const model = genAI.getGenerativeModel({
+      model: 'gemini-2.5-flash-lite',
+      generationConfig: { responseMimeType: "application/json" }
+    });
 
     let systemInstruction = '';
     if (isSaturday) {
@@ -151,10 +154,10 @@ async function handleAutoPost(request?: Request) {
        - title: (문자열) 생성된 제목
        - content: (문자열) HTML 태그가 포함된 본문 내용 (h2, h3, p, ul, li, strong, a 태그 등 활용. 스타일 속성은 제외)
 
-    JSON 예시:
+    JSON 스키마 예시:
     {
-      "title": "☕ 흑흑이의 모닝 브리핑: 삼성전자 실적 발표, 그 결과는?",
-      "content": "<h2>안녕하세요, 구독자님! 흑흑이입니다.</h2><p>오늘 아침 뉴스 보셨나요?</p><h3>📉 코스피, 소폭 하락 출발</h3><p>오늘 코스피가 전일 대비...</p>..."
+      "title": "제목",
+      "content": "내용"
     }`;
 
     console.log('Sending prompt to Gemini...');
