@@ -122,7 +122,8 @@ async function handleAutoPost(request?: Request) {
     ${systemInstruction}
     
     [절대 규칙 - 어길 시 해고]
-    1. **너는 내가 전달해 준 'Naver News 검색 결과 데이터'만을 바탕으로 글을 써야 해.**
+    1. **절대로 \`\`\`json 같은 마크다운 포장지 씌우지 말고, 순수한 JSON 텍스트만 출력해.** (반드시 지켜야 함)
+    2. **너는 내가 전달해 준 'Naver News 검색 결과 데이터'만을 바탕으로 글을 써야 해.**
     2. **특히 코스피, 나스닥 같은 주가나 지수 '숫자'는 전달받은 데이터에 정확히 명시되어 있을 때만 적고, 데이터에 없으면 절대 네 마음대로 숫자를 지어내지 마.** (팩트 체크 필수)
     3. **제공된 뉴스 내용에 없는 사실을 꾸며내지 마.**
     4. **전달된 데이터 중에서 가장 시의성 있고 중요한 내용을 선별해서 깊이 있게 분석해.**
@@ -162,7 +163,7 @@ async function handleAutoPost(request?: Request) {
 
     const response = await result.response;
     const text = response.text();
-    const cleanText = text.replace(/```json\n?|\n?```/g, '').trim();
+    const cleanText = text.replace(/```json/gi, '').replace(/```/g, '').trim();
 
     let generatedData;
     try {
