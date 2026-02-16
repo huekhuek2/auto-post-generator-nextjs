@@ -163,7 +163,11 @@ async function handleAutoPost(request?: Request) {
 
     const response = await result.response;
     const text = response.text();
-    const cleanText = text.replace(/```json/gi, '').replace(/```/g, '').trim();
+    const firstBrace = text.indexOf('{');
+    const lastBrace = text.lastIndexOf('}');
+    const cleanText = (firstBrace !== -1 && lastBrace !== -1)
+      ? text.substring(firstBrace, lastBrace + 1)
+      : text;
 
     let generatedData;
     try {
