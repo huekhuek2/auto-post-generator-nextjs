@@ -7,13 +7,28 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 
 // Shared logic for generating posts
 async function handleAutoPost(request?: Request) {
-  const KST_OFFSET = 9 * 60 * 60 * 1000;
-  const now = new Date(Date.now() + KST_OFFSET);
-  const today = now.toISOString().split('T')[0]; // YYYY-MM-DD
-  const dayOfWeek = now.getDay(); // 0 (Sun) - 6 (Sat)
-  const isSaturday = dayOfWeek === 6;
+  // Force KST (Asia/Seoul) strict calculation
+  const now = new Date();
 
-  console.log(`[Auto-Post] Starting job for date: ${today} (Day: ${dayOfWeek}, IsSaturday: ${isSaturday})`);
+  const today = new Intl.DateTimeFormat('ko-KR', {
+    timeZone: 'Asia/Seoul',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(now).replace(/\. /g, '-').replace('.', ''); // 2024-02-17
+
+  const weekdayStr = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Seoul',
+    weekday: 'short'
+  }).format(now);
+
+  const isSaturday = weekdayStr === 'Sat';
+
+  // Map Sun=0, Mon=1, ..., Sat=6
+  const dayMap: { [key: string]: number } = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  const dayOfWeek = dayMap[weekdayStr];
+
+  console.log(`[Auto-Post] Starting job for date: ${today} (Day: ${dayOfWeek}, IsSaturday: ${isSaturday}) based on KST`);
 
   // Check for API Keys
   if (!process.env.GEMINI_API_KEY) {

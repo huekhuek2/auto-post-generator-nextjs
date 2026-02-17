@@ -47,7 +47,7 @@ export default async function Home() {
                         ANALYSIS
                       </span>
                       <span className="text-xs text-gray-500 dark:text-gray-400">
-                        {new Date(post.created_at).toLocaleDateString()}
+                        {new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(post.created_at))}
                       </span>
                     </div>
                     <h2 className="text-2xl font-bold mb-4 text-gray-900 dark:text-white line-clamp-2 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">

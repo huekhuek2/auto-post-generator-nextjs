@@ -51,7 +51,7 @@ export default async function Post(props: { params: Promise<{ id: string }> }) {
                         {post.title}
                     </h1>
                     <div className="flex items-center space-x-4 text-blue-100 text-sm font-medium">
-                        <time dateTime={new Date(post.created_at).toISOString()}>{new Date(post.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}</time>
+                        <time dateTime={new Date(post.created_at).toISOString()}>{new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' }).format(new Date(post.created_at))}</time>
                         <span>•</span>
                         <span>AI Analysis</span>
                     </div>
