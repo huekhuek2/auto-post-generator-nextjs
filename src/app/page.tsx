@@ -1,5 +1,6 @@
 import { sql } from "@vercel/postgres";
 import Link from "next/link";
+import ManualTrigger from "../components/ManualTrigger";
 
 export const dynamic = 'force-dynamic';
 
@@ -21,7 +22,7 @@ export default async function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 dark:bg-gray-900 py-12 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-gray-100 dark:bg-gray-900 py-12 px-4 sm:px-6 lg:px-8 relative">
       <div className="max-w-6xl mx-auto">
         <header className="text-center mb-16">
           <h1 className="text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600 dark:from-blue-400 dark:to-purple-400 mb-4">
@@ -69,6 +70,7 @@ export default async function Home() {
           </div>
         )}
       </div>
+      <ManualTrigger />
     </div>
   );
 }
