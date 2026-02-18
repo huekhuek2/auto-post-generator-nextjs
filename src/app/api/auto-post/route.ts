@@ -6,29 +6,29 @@ import { sql } from '@vercel/postgres';
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 
 // Shared logic for generating posts
-async function handleAutoPost(request?: Request) {
-  // Force KST (Asia/Seoul) strict calculation
-  const now = new Date();
+async function handleAutoPost(request: Request) {
+  // 0. Security Check (CRON_SECRET)
+  // Vercel Cron sends this header strictly.
+  const authHeader = request.headers.get('authorization');
+  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    return NextResponse.json(
+      { success: false, error: 'Unauthorized: Invalid CRON_SECRET' },
+      { status: 401 }
+    );
+  }
 
+  // 1. Force KST (Asia/Seoul) strict calculation
+  // "2026년 2월 18일 수요일" format strictly in KST
   const today = new Intl.DateTimeFormat('ko-KR', {
     timeZone: 'Asia/Seoul',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  }).format(now).replace(/\. /g, '-').replace('.', ''); // 2024-02-17
+    dateStyle: 'full',
+  }).format(new Date());
 
-  const weekdayStr = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'Asia/Seoul',
-    weekday: 'short'
-  }).format(now);
+  console.log(`[Auto-Post] Starting job for date: ${today} based on KST`);
 
-  const isSaturday = weekdayStr === 'Sat';
-
-  // Map Sun=0, Mon=1, ..., Sat=6
-  const dayMap: { [key: string]: number } = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
-  const dayOfWeek = dayMap[weekdayStr];
-
-  console.log(`[Auto-Post] Starting job for date: ${today} (Day: ${dayOfWeek}, IsSaturday: ${isSaturday}) based on KST`);
+  // Simple check for Saturday based on the Korean string
+  // "2026년 2월 18일 수요일" includes the day name.
+  const isSaturday = today.includes('토요일');
 
   // Check for API Keys
   if (!process.env.GEMINI_API_KEY) {
@@ -41,7 +41,7 @@ async function handleAutoPost(request?: Request) {
   }
 
   try {
-    // 1. Define Topics & Sort Order based on Day
+    // 2. Define Topics & Sort Order based on Day
     let keywords: string[] = [];
     let sortOption = 'date'; // Default: Sort by query date/latest
 
@@ -49,19 +49,20 @@ async function handleAutoPost(request?: Request) {
       // Saturday: Weekly Summary
       console.log('Mode: Saturday Weekly Briefing');
       const baseKeywords = ['이번 주 증시 요약', '한 주간 주요 경제 뉴스', '주간 증시 전망', '이번 주 비트코인 흐름'];
-      keywords = baseKeywords.map(k => `${k} ${today}`); // Append date to keep relevance
+      keywords = baseKeywords.map(k => `${k} ${today.split(' ')[0]} ${today.split(' ')[1]}`); // Approximate date matching if needed, or just keyword
       sortOption = 'sim'; // Sort by similarity/relevance for weekly overviews
     } else {
       // Weekdays + Sunday: Daily News
       console.log('Mode: Daily News Briefing');
       const baseKeywords = ['코스피', '미국 증시', '삼성전자', '비트코인', '경제 뉴스'];
-      keywords = baseKeywords.map(k => `${k} ${today}`);
+      // Using base keywords combined with sort='date' for latest news
+      keywords = baseKeywords;
       sortOption = 'date'; // Sort by latest
     }
 
     console.log(`Searching Naver News for keywords: ${keywords.join(', ')} (Sort: ${sortOption})`);
 
-    // 2. Fetch Data from Naver News API
+    // 3. Fetch Data from Naver News API
     let combinedContext = '';
 
     const searchPromises = keywords.map(async (keyword, index) => {
@@ -111,7 +112,7 @@ async function handleAutoPost(request?: Request) {
 
     console.log('Naver News data collected successfully.');
 
-    // 3. Generate Content with Gemini
+    // 4. Generate Content with Gemini
     console.log('Initializing Gemini client...');
     const model = genAI.getGenerativeModel({
       model: 'gemini-2.5-flash-lite',
@@ -134,7 +135,7 @@ async function handleAutoPost(request?: Request) {
 
     const prompt = `
     역할: 당신은 '흑흑이'라는 친근한 별명을 가진 경제 뉴스레터 에디터입니다.
-    오늘 날짜: ${today}
+    오늘 날짜: ${today} (반드시 이 날짜와 요일을 기준으로 작성하세요.)
     
     [모드 설정]
     ${systemInstruction}
@@ -157,7 +158,7 @@ async function handleAutoPost(request?: Request) {
        - 어려운 경제 용어는 쉽게 풀어써주세요.
 
     2. **글의 구조**:
-       - **제목**: 이모지(☕, 🚀, 📉 등)를 활용한 감성적이고 클릭하고 싶은 제목. (오늘 날짜 포함 권장)
+       - **제목**: 이모지(☕, 🚀, 📉 등)를 활용한 감성적이고 클릭하고 싶은 제목. (오늘 날짜 "${today}" 포함 권장)
        - **인사말**: 날씨(한국 기준), 계절, 요일 등을 언급하며 가볍게 시작.
        - **본문**: 
          - 위 데이터에서 확인된 **가장 핫한 키워드 2~3개**를 중심으로 소제목(h3)을 달고 작성하세요.
@@ -198,7 +199,7 @@ async function handleAutoPost(request?: Request) {
       };
     }
 
-    // 4. Save to Vercel Postgres
+    // 5. Save to Vercel Postgres
     const { title, content } = generatedData;
 
     // Validate content isn't empty
