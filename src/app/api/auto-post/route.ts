@@ -190,7 +190,8 @@ async function handleAutoPost(request: Request) {
 
     let generatedData;
     try {
-      generatedData = JSON.parse(cleanText);
+      const safeText = cleanText.replace(/\n/g, "\\n").replace(/\r/g, "\\r");
+      generatedData = JSON.parse(safeText);
     } catch (e) {
       console.error('JSON Parsing Failed. Raw text:', text);
       generatedData = {
