@@ -143,7 +143,7 @@ async function handleAutoPost(request: Request) {
     [절대 규칙 - 어길 시 해고]
     1. **절대로 \`\`\`json 같은 마크다운 포장지 씌우지 말고, 순수한 JSON 텍스트만 출력해.** (반드시 지켜야 함)
     2. **너는 내가 전달해 준 'Naver News 검색 결과 데이터'만을 바탕으로 글을 써야 해.**
-    2. **특히 코스피, 나스닥 같은 주가나 지수 '숫자'는 전달받은 데이터에 정확히 명시되어 있을 때만 적고, 데이터에 없으면 절대 네 마음대로 숫자를 지어내지 마.** (팩트 체크 필수)
+    3. **특히 코스피, 나스닥 같은 주가나 지수 '숫자'는 전달받은 데이터에 정확히 명시되어 있을 때만 적고, 데이터에 없으면 절대 네 마음대로 숫자를 지어내지 마.** (팩트 체크 필수)
     3. **제공된 뉴스 내용에 없는 사실을 꾸며내지 마.**
     4. **전달된 데이터 중에서 가장 시의성 있고 중요한 내용을 선별해서 깊이 있게 분석해.**
 
@@ -190,14 +190,21 @@ async function handleAutoPost(request: Request) {
 
     let generatedData;
     try {
-      const safeText = cleanText.replace(/\n/g, "\\n").replace(/\r/g, "\\r");
-      generatedData = JSON.parse(safeText);
+      // Step 1: Try parsing the clean text directly (handles pretty-printed JSON correctly)
+      generatedData = JSON.parse(cleanText);
     } catch (e) {
-      console.error('JSON Parsing Failed. Raw text:', text);
-      generatedData = {
-        title: `흑흑이의 경제 뉴스 (${today})`,
-        content: `<h2>자동 생성 중 형식 오류가 발생했지만, 내용은 아래와 같습니다.</h2>${text}`
-      };
+      console.warn('First JSON parse attempt failed. Trying fallback (removing newlines)...');
+      try {
+        // Step 2: Fallback - replace newlines with spaces (safe for JSON structure, fixes unescaped newlines in strings)
+        const safeText = cleanText.replace(/[\n\r]/g, " ");
+        generatedData = JSON.parse(safeText);
+      } catch (e2) {
+        console.error('JSON Parsing Failed Final. Raw text start:', text.substring(0, 500));
+        generatedData = {
+          title: `흑흑이의 경제 뉴스 (${today})`,
+          content: `<h2>자동 생성 중 형식 오류가 발생했지만, 내용은 아래와 같습니다.</h2><p><strong>Raw Debug Data:</strong></p><pre>${text.replace(/</g, "&lt;").substring(0, 2000)}...</pre>`
+        };
+      }
     }
 
     // 5. Save to Vercel Postgres
