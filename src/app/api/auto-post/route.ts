@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
 import { sql } from '@vercel/postgres';
 
 // Initialize Gemini
@@ -116,7 +116,23 @@ async function handleAutoPost(request: Request) {
     console.log('Initializing Gemini client...');
     const model = genAI.getGenerativeModel({
       model: 'gemini-2.5-flash-lite',
-      generationConfig: { responseMimeType: "application/json" }
+      generationConfig: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: SchemaType.OBJECT,
+          properties: {
+            title: {
+              type: SchemaType.STRING,
+              description: "뉴스레터 제목 (이모지 포함 권장)"
+            },
+            content: {
+              type: SchemaType.STRING,
+              description: "HTML 형식의 본문 내용 (태그 속성값의 따옴표는 안전하게 이스케이프됨)"
+            }
+          },
+          required: ["title", "content"]
+        }
+      }
     });
 
     let systemInstruction = '';
@@ -193,10 +209,12 @@ async function handleAutoPost(request: Request) {
       // Step 1: Try parsing the clean text directly (handles pretty-printed JSON correctly)
       generatedData = JSON.parse(cleanText);
     } catch (e) {
-      console.warn('First JSON parse attempt failed. Trying fallback (removing newlines)...');
+      console.warn('First JSON parse attempt failed. Trying fallback (removing unescaped control chars and newlines)...');
       try {
-        // Step 2: Fallback - replace newlines with spaces (safe for JSON structure, fixes unescaped newlines in strings)
-        const safeText = cleanText.replace(/[\n\r]/g, " ");
+        // Step 2: Fallback - sanitize some common unescaped characters before JSON parsing
+        // Replace actual newlines/carriage returns, but leave escaped \n alone.
+        const safeText = cleanText.replace(/[\n\r]/g, " ")
+          .replace(/\\+"/g, '\\"'); // Attempt to fix messed up double quotes if any
         generatedData = JSON.parse(safeText);
       } catch (e2) {
         console.error('JSON Parsing Failed Final. Raw text start:', text.substring(0, 500));
