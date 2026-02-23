@@ -233,11 +233,15 @@ async function handleAutoPost(request: Request) {
       throw new Error('Generated content is too short or empty.');
     }
 
-    // Check for duplicate title
-    const existingPost = await sql`SELECT id FROM posts WHERE title = ${title} LIMIT 1`;
+    // Prevent multiple posts per day (KST)
+    const existingPost = await sql`
+      SELECT id FROM posts 
+      WHERE DATE(created_at AT TIME ZONE 'Asia/Seoul') = DATE(NOW() AT TIME ZONE 'Asia/Seoul')
+      LIMIT 1
+    `;
     if (existingPost.rows.length > 0) {
-      console.warn(`[Auto-Post] Duplicate post detected. Title: "${title}". Skipping insertion.`);
-      return NextResponse.json({ success: true, message: 'Post generation skipped (Duplicate Title)', data: generatedData }, { status: 200 });
+      console.warn(`[Auto-Post] A post has already been generated today. Skipping.`);
+      return NextResponse.json({ success: true, message: 'Post generation skipped (Already generated today)', data: generatedData }, { status: 200 });
     }
 
     await sql`
